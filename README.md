@@ -1,36 +1,36 @@
-# Glycerol Prediction and Numerical Analysis Using Machine Learning
+# Glycerol Estimation and Numerical Analysis Using MATLAB
 
 ## Project Overview
 
-This project focuses on predicting glycerol values through machine learning and numerical analysis techniques. Multiple processed datasets are used to train regression models, and the generated predictions are compared against the original dataset to evaluate model performance and prediction accuracy.
+This project focuses on glycerol concentration estimation using MATLAB-based numerical analysis and statistical modeling techniques. Multiple experimental datasets are processed and analyzed to investigate the relationship between impedance-derived features and glycerol concentration. Model outputs are compared against reference measurements from the original dataset to evaluate calibration accuracy and robustness.
 
-The study investigates the relationship between transformed datasets and the original glycerol measurements while applying statistical analysis, preprocessing, visualization, and supervised learning methods.
+The study applies preprocessing, signal alignment, feature extraction, and multivariate statistical methods to experimental QCM flow data.
 
 ---
 
 ## Objectives
 
-* Analyze glycerol-related numerical datasets
-* Train machine learning regression models using processed data
-* Predict glycerol values from experimental features
-* Compare predicted results with original measurements
-* Evaluate model accuracy using regression metrics
-* Visualize relationships and prediction performance
+* Analyze QCM impedance and flow-based experimental datasets
+* Process and align multiple dataset sources (`data2`, `data3`, `data4`, `IWIS2025flow`)
+* Estimate glycerol concentration using regression-based models
+* Compare estimated values with reference measurements
+* Evaluate calibration performance using statistical metrics
+* Visualize relationships between features and concentration
 
 ---
 
 ## Datasets
 
-The project utilizes multiple datasets:
+The project utilizes the following datasets:
 
-| Dataset         | Purpose                          |
-| --------------- | -------------------------------- |
-| `data2`         | Training dataset                 |
-| `data3`         | Training dataset                 |
-| `data4`         | Training dataset                 |
-| `IWIS2025flow`  | Reference dataset for comparison |
+| Dataset        | Purpose                                                                |
+| -------------- | ---------------------------------------------------------------------- |
+| `data2`        | Processed experimental dataset                                         |
+| `data3`        | Processed experimental dataset with additional MATLAB analysis scripts |
+| `data4`        | Processed experimental dataset                                         |
+| `IWIS2025flow` | Reference dataset containing flow and impedance measurements           |
 
-These datasets contain numerical measurements associated with glycerol values and experimental parameters.
+These datasets consist of impedance-derived features, flow control signals, and auxiliary measurement parameters related to glycerol-in-water experiments.
 
 ---
 
@@ -40,42 +40,52 @@ These datasets contain numerical measurements associated with glycerol values an
 
 The preprocessing pipeline includes:
 
-* Missing value handling
-* Data cleaning
-* Feature extraction
-* Normalization and scaling
-* Numerical formatting
+* Time alignment between flow and impedance measurements
+* Removal of corrupted or unstable measurement regions
+* Feature extraction from impedance signals
+* Standardization and numerical normalization
+* Organization of steady-state measurement windows
 
-### Machine Learning Workflow
+---
 
-The machine learning process consists of:
+### Statistical and Numerical Analysis
 
-1. Loading processed datasets
-2. Splitting training and testing data
-3. Training regression models
-4. Generating glycerol predictions
-5. Comparing predictions with original values
-6. Evaluating model performance
+* Segmentation of experimental data into steady-state regions
+* Computation of mean and standard deviation per segment
+* Construction of calibration-ready feature matrices
 
-### Regression Analysis
+---
 
-Regression techniques are applied to estimate glycerol concentrations and numerical trends from processed experimental data.
+### Regression and Multivariate Modeling
 
-Potential models include:
+Regression techniques are used to estimate glycerol concentration from impedance-derived features:
 
-* Linear Regression
-* Random Forest Regression
-* Gradient Boosting Regression
-* Support Vector Regression
-* Ensemble-based approaches
+* Linear Regression (univariate calibration)
+* Principal Component Analysis (PCA) for dimensionality reduction
+* Partial Least Squares (PLS) regression for multivariate calibration
+* Model comparison between univariate and multivariate approaches
+
+---
+
+### Model Evaluation
+
+Model performance is evaluated using:
+
+* Calibration sensitivity (Hz/%)
+* Coefficient of determination (R²)
+* Error metrics (MAE, MSE, RMSE)
+* Noise floor estimation
+* Limit of detection (LOD) analysis
 
 ---
 
 ## Technologies Used
 
-| Technology | Purpose                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------ |
-| MATLAB     | Numerical analysis, machine learning, data preprocessing, regression modeling, and visualization |
+| Technology                              | Purpose                                                                       |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| MATLAB                                  | Numerical computation, signal processing, statistical modeling, visualization |
+| Statistics and Machine Learning Toolbox | Regression and multivariate analysis                                          |
+| Signal Processing Toolbox               | Feature extraction and signal analysis                                        |
 
 ---
 
@@ -136,12 +146,11 @@ numerical_project/
     └── pp.mat
 ```
 
-
 ---
 
 ## Requirements
 
-The project is developed and executed entirely in MATLAB.
+The project is implemented entirely in MATLAB.
 
 Required software:
 
@@ -153,25 +162,13 @@ Required software:
 
 ## Usage
 
-1. Open MATLAB.
+Open MATLAB and navigate to the project directory:
 
-2. Clone or download the repository:
-
-```bash
-git clone https://github.com/melisms/numerical_project.git
+```matlab
+numerical_project/IWIS2025flow
 ```
 
-3. Open the project folder in MATLAB:
-
-```text
-numerical_project/
-```
-
-4. Navigate to the `IWIS2025flow` directory.
-
-5. Run the required MATLAB scripts for preprocessing, regression analysis, machine learning training, and prediction.
-
-Example:
+Run analysis scripts:
 
 ```matlab
 run('mdpi_poly_data.m')
@@ -179,41 +176,35 @@ run('PCA.m')
 run('pls.m')
 ```
 
-6. Compare predicted glycerol values with the original dataset outputs.
-
 ---
 
 ## Evaluation Metrics
-
-The project evaluates prediction performance using:
 
 * Mean Absolute Error (MAE)
 * Mean Squared Error (MSE)
 * Root Mean Squared Error (RMSE)
 * R² Score
 
-These metrics are used to measure how closely predicted glycerol values match the original experimental measurements.
+These metrics quantify agreement between estimated and reference glycerol values.
 
 ---
 
 ## Visualization Outputs
 
-The analysis may generate:
-
-* Predicted vs Actual plots
+* Predicted vs reference comparison plots
 * Correlation heatmaps
-* Residual analysis plots
-* Regression comparison graphs
-* Distribution visualizations
+* Residual analysis
+* Regression calibration curves
+* Feature distribution plots
 
 ---
 
 ## Results
 
-The trained models are evaluated by comparing predicted glycerol values against the original dataset. Lower error metrics and higher R² values indicate improved predictive performance and stronger agreement with the reference measurements.
+The analysis demonstrates a consistent relationship between impedance-derived features and glycerol concentration. Multivariate approaches improve robustness against feature collinearity compared to univariate calibration models. Overall performance is evaluated through calibration accuracy, error reduction, and stability across experimental conditions.
 
 ---
 
 ## License
 
-This project is intended for academic, research, and educational purposes.
+This project is intended for academic, research, and educational use.
