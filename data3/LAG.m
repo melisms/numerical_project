@@ -1,119 +1,168 @@
-clearvars
-clc
+%% =========================================================
+%  data3_pcr_clean.m
+%  data3 Multivariate Analizi: PCA + PCR + VIF
+%  (Kalibrasyon CIKARILDI - sweep/akis zaman uyusmazligi nedeniyle)
+%
+%  KULLANIM:
+%  - Bu dosyayi data3 klasorune koy (pp.mat ile ayni yere)
+%  - data.txt, ust klasordeki IWIS2025flow icinde olmali
+%  - MATLAB'da Current Folder'i data3 yap, calistir
+% =========================================================
+clear; clc; close all;
+warning('off', 'MATLAB:table:RowsAddedExistingVars');
 
-%% =========================
-% 1. LOAD DATA
-% =========================
-load('3rd_fit.mat','T');
-X = table2array(T);
+scriptDir = fileparts(mfilename('fullpath'));
+if isempty(scriptDir), scriptDir = pwd; end
 
-opts = detectImportOptions('/Users/melisamuslu/Documents/MATLAB/data/IWIS2025flow/data.txt');
-opts.VariableNamingRule = 'modify';
-Traw = readtable('/Users/melisamuslu/Documents/MATLAB/data/IWIS2025flow/data.txt', opts);
+load(fullfile(scriptDir, 'pp.mat'));
 
-y = Traw{:,4};   % s1(Read)
+resultDir = fullfile(scriptDir, 'results');
+figDir    = fullfile(scriptDir, 'figures');
+if ~exist(resultDir, 'dir'), mkdir(resultDir); end
+if ~exist(figDir,    'dir'), mkdir(figDir);    end
 
-%% =========================
-% 2. ALIGN LENGTH
-% =========================
-n = min(size(X,1), length(y));
-X = X(1:n,:);
-y = y(1:n,:);
+% =====================
+% 1. EMPEDANS OZELLIKLERI - pp.mat
+% =====================
+sweep = (1:numel(R_peak))';
 
-%% =========================
-% 3. STANDARDIZATION
-% =========================
-mu = mean(X);
-sigma = std(X);
-sigma(sigma==0)=1;
-Xz = (X - mu) ./ sigma;
+features = [R_peak(:), X1_peak(:), X2_peak(:), Z_abs_peak(:), ...
+            Phase_peak(:), Y_abs_peak(:), G_peak(:), B_peak(:)];
 
-%% =========================
-% 4. FIND BEST LAG
-% =========================
-maxLag = 30;
-bestR2 = -inf;
-bestLag = 0;
+featureNames = {'R_peak','X1_peak','X2_peak','Z_abs_peak', ...
+                'Phase_peak','Y_abs_peak','G_peak','B_peak'};
 
-for lag = 0:maxLag
+% Pompa arizasi - sweep 1785 sonrasi haric
+valid      = sweep < 1785;
+sweepValid = sweep(valid);
 
-    if lag == 0
-        Xs = Xz;
-        ys = y;
-    else
-        Xs = Xz(1:end-lag,:);
-        ys = y(lag+1:end);
-    end
+% =====================
+% 2. PLATEAU SEGMENTASYONU (21 seviye)
+% =====================
+nLevels = 21;
+edges   = round(linspace(min(sweepValid), max(sweepValid)+1, nLevels+1));
 
-    % train/test split (fixed per lag)
-    idx = randperm(length(ys));
-    nTrain = round(0.7*length(ys));
-
-    tr = idx(1:nTrain);
-    te = idx(nTrain+1:end);
-
-    Xtr = Xs(tr,:);
-    ytr = ys(tr);
-
-    Xte = Xs(te,:);
-    yte = ys(te);
-
-    % SVR model
-    mdl = fitrsvm(Xtr, ytr, ...
-        'KernelFunction','gaussian', ...
-        'Standardize',true);
-
-    ypred = predict(mdl, Xte);
-
-    % R2
-    R2 = 1 - sum((yte - ypred).^2) / sum((yte - mean(yte)).^2);
-
-    if R2 > bestR2
-        bestR2 = R2;
-        bestLag = lag;
-        bestModel = mdl;
-        bestTest = struct('Xte',Xte,'yte',yte,'ypred',ypred);
-    end
+plateauID = nan(size(sweep));
+for k = 1:nLevels
+    idx = sweep >= edges(k) & sweep < edges(k+1) & valid;
+    plateauID(idx) = k;
 end
 
-fprintf('=========================\n');
-fprintf('BEST LAG: %d\n', bestLag);
-fprintf('BEST R2 : %.4f\n', bestR2);
-fprintf('=========================\n');
+plateauConc = (0:0.1:2.0)';
 
-%% =========================
-% 5. FINAL EVALUATION
-% =========================
-ytest = bestTest.yte;
-ypred = bestTest.ypred;
+% Her plato icin ortalama (gurultu burada yok olur)
+meanVals = nan(nLevels, numel(featureNames));
+for k = 1:nLevels
+    idx = plateauID == k;
+    meanVals(k,:) = mean(features(idx,:), 1, 'omitnan');
+end
 
-RMSE = sqrt(mean((ytest - ypred).^2));
-R2 = bestR2;
+% =====================
+% 3. PCA (SVD ile, toolbox yok)
+% =====================
+X_std = standardizeColumns(meanVals);
+[U, S, coeff] = svd(X_std, 'econ');
+score     = U * S;
+latent    = diag(S).^2 ./ (size(X_std,1)-1);
+explained = 100 * latent ./ sum(latent);
 
-fprintf('FINAL MODEL\n');
-fprintf('R2   = %.4f\n', R2);
-fprintf('RMSE = %.4f\n', RMSE);
+pcaTable = table((1:numel(explained))', explained, cumsum(explained), ...
+    'VariableNames',{'PC','Explained_percent','Cumulative_percent'});
+writetable(pcaTable, fullfile(resultDir,'pca_explained_variance.csv'));
 
-%% =========================
-% 6. PLOTS
-% =========================
-figure;
-plot(ytest,'b','LineWidth',1.5); hold on;
-plot(ypred,'r--','LineWidth',1.5);
-legend('True','Predicted');
-title(['Lag-Optimized SVR (Lag = ' num2str(bestLag) ')']);
+figure('Color','w');
+scatter(score(:,1), score(:,2), 50, plateauConc, 'filled');
+xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
+ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
+title('PCA of standardized impedance features');
+cb = colorbar; cb.Label.String = 'Glycerol concentration (% w/v)';
 grid on;
+saveas(gcf, fullfile(figDir,'pca_result.png'));
 
-figure;
-scatter(ytest, ypred, 25, 'filled');
-xlabel('True');
-ylabel('Predicted');
-title('Parity Plot (Lag Optimized)');
-grid on;
-refline(1,0);
+fprintf('PCA explained variance:\n');
+disp(pcaTable(1:4,:));
 
-figure;
-residuals = ytest - ypred;
-plot(residuals);
-title('Residuals');
+% =====================
+% 4. PCR (konsantrasyon tahmini)
+% =====================
+Xreg = score(:,1:2);
+yreg = plateauConc;
+
+[~, ~, pcrR2, yhat] = simpleMultipleFit(Xreg, yreg);
+rmsePCR = sqrt(mean((yreg - yhat).^2));
+
+figure('Color','w');
+plot(yreg, yhat, 'o', 'LineWidth', 1.2); hold on;
+plot([min(plateauConc) max(plateauConc)], ...
+     [min(plateauConc) max(plateauConc)], 'k--');
+xlabel('Reference concentration (% w/v)');
+ylabel('Predicted concentration (% w/v)');
+title(sprintf('PCR prediction  |  R^2 = %.4f, RMSE = %.4f %%', pcrR2, rmsePCR));
 grid on;
+saveas(gcf, fullfile(figDir,'pcr_prediction.png'));
+
+multivarResults = table(rmsePCR, pcrR2, ...
+    'VariableNames',{'PCR_RMSE_percent','PCR_R2'});
+writetable(multivarResults, fullfile(resultDir,'multivariate_results.csv'));
+
+fprintf('\nPCR R2 = %.4f, RMSE = %.4f %%\n', pcrR2, rmsePCR);
+
+% =====================
+% 5. VIF (collinearity, toolbox yok)
+% =====================
+fprintf('\nVIF Analizi:\n');
+fprintf('%-15s %12s\n','Feature','VIF');
+fprintf('%s\n', repmat('-',1,28));
+
+vifVals = zeros(1, numel(featureNames));
+for f = 1:numel(featureNames)
+    y_vif  = X_std(:,f);
+    X_vif  = X_std(:, setdiff(1:numel(featureNames), f));
+    b_vif  = X_vif \ y_vif;
+    yh_vif = X_vif * b_vif;
+    ss_res = sum((y_vif - yh_vif).^2);
+    ss_tot = sum((y_vif - mean(y_vif)).^2);
+    R2_vif = 1 - ss_res / ss_tot;
+    vifVals(f) = 1 / max(1 - R2_vif, 1e-10);
+    fprintf('%-15s %12.2f\n', featureNames{f}, vifVals(f));
+end
+
+vifTable = table(featureNames', vifVals', 'VariableNames',{'Feature','VIF'});
+writetable(vifTable, fullfile(resultDir,'vif_results.csv'));
+
+% =====================
+% 6. LOD (PCR bazli)
+% =====================
+LOD_PCR = 3 * rmsePCR;
+fprintf('\nPCR LOD = %.4f %%\n', LOD_PCR);
+
+lodTable = table({'PCR (multivariate)'}, LOD_PCR, ...
+    'VariableNames',{'Method','LOD_percent'});
+writetable(lodTable, fullfile(resultDir,'lod_comparison.csv'));
+
+disp('Done. Figures -> /figures   |   CSV -> /results');
+
+% ============================================================
+% LOCAL FUNCTIONS
+% ============================================================
+function Xs = standardizeColumns(X)
+    mu    = mean(X, 1, 'omitnan');
+    sigma = std(X,  0, 1, 'omitnan');
+    sigma(sigma == 0 | ~isfinite(sigma)) = 1;
+    Xs = (X - mu) ./ sigma;
+    Xs(~isfinite(Xs)) = 0;
+end
+
+function [intercept, slopes, R2, yhat] = simpleMultipleFit(X, y)
+    y    = y(:);
+    keep = all(isfinite(X),2) & isfinite(y);
+    X    = X(keep,:); y = y(keep);
+    A    = [ones(size(X,1),1), X];
+    beta = A \ y;
+    intercept = beta(1);
+    slopes    = beta(2:end);
+    yhat      = A * beta;
+    sse = sum((y - yhat).^2);
+    sst = sum((y - mean(y)).^2);
+    R2  = 1 - sse/sst;
+end

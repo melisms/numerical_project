@@ -10,19 +10,28 @@ X = table2array(T);
 %% =========================
 % 2. LOAD TARGET DATA
 % =========================
-opts = detectImportOptions('/Users/melisamuslu/Documents/MATLAB/data/IWIS2025flow/data.txt');
-opts.VariableNamingRule = 'modify';
-Traw = readtable('/Users/melisamuslu/Documents/MATLAB/data/IWIS2025flow/data.txt', opts);
+baseDir = fileparts(mfilename('fullpath'));
+dataRoot = fileparts(baseDir);
+dataFile = fullfile(dataRoot, 'IWIS2025flow', 'data.txt');
 
-y = Traw{:,4};   % s1(Read)
+opts = detectImportOptions(dataFile);
+opts.VariableNamingRule = 'modify';
+Traw = readtable(dataFile, opts);
+
+s1 = Traw{:,4};
+s2 = Traw{:,5};
+conc = (s1 ./ (s1+s2)) * 2.0;
 
 %% =========================
 % 3. ALIGN DATA (CRITICAL)
 % =========================
-n = min(size(X,1), length(y));
-
-X = X(1:n,:);
-y = y(1:n,:);
+pp = load("pp.mat");
+t_sweep_s = pp.R_time(:) * 60;
+t_flow = Traw{:,2};
+t_flow = t_flow - t_flow(1);
+y = interp1(t_flow, conc, t_sweep_s, "linear", "extrap");
+y = y(:);
+n = size(X,1);
 
 %% =========================
 % 4. REMOVE CONSTANT FEATURES
