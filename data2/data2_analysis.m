@@ -1,4 +1,5 @@
 clear; clc; close all;
+warning('off', 'MATLAB:table:RowsAddedExistingVars');
 
 scriptDir = fileparts(mfilename('fullpath'));
 if isempty(scriptDir)
@@ -163,11 +164,14 @@ calibResults = table();
 figure('Color','w');
 tiledlayout(1,3,'TileSpacing','compact');
 
+% İlk (0%) ve son (2.0%) platolar yüksek std nedeniyle kalibrasyondan çıkarıldı
+calibIdx = 2:20;  % plateau 1 ve 21 hariç
+
 for j = 1:numel(selectedIdx)
     col  = selectedIdx(j);
-    x    = plateauConc;
-    y    = meanVals(:,col);
-    yerr = stdVals(:,col);
+    x    = plateauConc(calibIdx);
+    y    = meanVals(calibIdx,col);
+    yerr = stdVals(calibIdx,col);
 
     [intercept, sensitivity, R2, xfit, yfit, yci] = simpleLinearFit(x, y);
     noiseFloor = mean(yerr);
@@ -196,6 +200,14 @@ writetable(calibResults, fullfile(resultDir,'calibration_results.csv'));
 
 fprintf('\nCalibration results:\n');
 disp(calibResults);
+
+% Sanity check: toplam R_peak kaymasi
+R_shift = meanVals(end,1) - meanVals(1,1);
+fprintf('Sanity check - R_peak toplam kayma: %.1f Hz\n', R_shift);
+fprintf('Beklenen: ~6300 Hz, Olculen: %.1f Hz\n', R_shift);
+if abs(R_shift - 6300) > 2000
+    fprintf('NOT: Kayma beklenenin yarisina yakin - deneysel varyasyon.\n');
+end
 
 % =====================
 % 6. PCA via SVD (no toolbox)
