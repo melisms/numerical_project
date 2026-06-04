@@ -1,32 +1,18 @@
 clearvars
 clc
-data.data=readmatrix("/Users/melisamuslu/Documents/MATLAB/data/data3/B1_data.txt");
-raw = data.data;
-B1_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/B2_data.txt");
-raw=data.data;
-B2_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/angle_Z_data.txt");
-raw=data.data;
-angle_Z_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/Z_abs_data.txt");
-raw=data.data;
-Z_abs_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/Z_abs2_data.txt");
-raw=data.data;
-Z_abs2_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/X1_data.txt");
-raw=data.data;
-X1_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/X2_data.txt");
-raw=data.data;
-X2_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/R_data.txt");
-raw=data.data;
-R_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
-data.data=importdata("/Users/melisamuslu/Documents/MATLAB/data/data3/G_data.txt");
-raw=data.data;
-G_data=permute(reshape(raw.', 3, 1000, []), [3 2 1]);
+
+dataDir = fileparts(mfilename('fullpath'));
+% Load the datasets
+B1_data      = loadDataset(fullfile(dataDir,'B1_data.txt'));
+B2_data      = loadDataset(fullfile(dataDir,'B2_data.txt'));
+angle_Z_data = loadDataset(fullfile(dataDir,'angle_Z_data.txt'));
+Z_abs_data   = loadDataset(fullfile(dataDir,'Z_abs_data.txt'));
+Z_abs2_data  = loadDataset(fullfile(dataDir,'Z_abs2_data.txt'));
+X1_data      = loadDataset(fullfile(dataDir,'X1_data.txt'));
+X2_data      = loadDataset(fullfile(dataDir,'X2_data.txt'));
+R_data       = loadDataset(fullfile(dataDir,'R_data.txt'));
+G_data       = loadDataset(fullfile(dataDir,'G_data.txt'));
+
 for k=1:size(B1_data,1)
     B1_poly(k,:)=mdpi_3rd_poly([B1_data(k,:,1)',imag(1./(B1_data(k,:,2)+i*B1_data(k,:,3)))']);
     B2_poly(k,:)=mdpi_3rd_poly([B2_data(k,:,1)',imag(1./(B2_data(k,:,2)+i*B2_data(k,:,3)))']);
@@ -47,3 +33,13 @@ save('3rd_fit.mat',"T");
 head(T)
 summary(T)
 X = table2array(T);
+
+function out = loadDataset(filename)
+
+    raw = readmatrix(filename);
+    
+    out = permute( ...
+        reshape(raw.',3,1000,[]), ...
+        [3 2 1]);
+
+end
