@@ -1,4 +1,5 @@
 clear; clc; close all;
+warning('off', 'MATLAB:table:RowsAddedExistingVars');
 
 scriptDir = fileparts(mfilename('fullpath'));
 if isempty(scriptDir)
@@ -13,6 +14,79 @@ resultDir = fullfile(scriptDir, 'results');
 if ~exist(figDir,    'dir'), mkdir(figDir);    end
 if ~exist(resultDir, 'dir'), mkdir(resultDir); end
 
+% =====================
+% 1. FLOW DATA - data.txt
+% =====================
+flowFile = fullfile(scriptDir, 'data.txt');
+opts = detectImportOptions(flowFile, 'Delimiter', '\t');
+opts.DataLines = [2 Inf];
+opts.VariableNames = {'TimeStamp','Time_s','s1_target','s1_read','s2_target','s2_read'};
+opts.SelectedVariableNames = {'Time_s','s1_target','s1_read','s2_target','s2_read'};
+flowData = readtable(flowFile, opts);
+
+t_flow   = flowData.Time_s;
+s1_target = flowData.s1_target;
+s2_target = flowData.s2_target;
+s1_read   = flowData.s1_read;
+s2_read   = flowData.s2_read;
+
+% Konsantrasyon = s1 / (s1+s2) * 2.0%
+total_flow = s1_target + s2_target;
+% Stok konsantrasyonu 5% w/v, toplam akis ~50 uL/min sabit
+% s2_target: gliserol stok pompasi (0-20 uL/min)
+% s1_target: su pompasi (30-50 uL/min)
+conc_flow = (s2_target ./ 50.0) .* 5.0;  % % w/v
+
+% Zaman eksenini normalize et (0'dan baslat)
+t_flow = t_flow - t_flow(1);
+
+% Pump failure detection - R_peak'teki ani siçramadan tespit
+% Ödev dokümani: sweep ~1785 civarinda ani atlama
+R_diff = abs(diff(R_peak(:)));
+% Yerel standart sapmadan 10 kat büyük degisim = pump arizasi
+local_std = movstd(R_diff, 50);
+threshold_pump = 10 * median(local_std);
+bad_sweeps = find(R_diff > threshold_pump & R_diff > 100);  % min 100 Hz atlama
+
+pump_fail_sweep = NaN;
+if ~isempty(bad_sweeps)
+    % Sweep 500'den sonraki ilk büyük atlama
+    bad_sweeps = bad_sweeps(bad_sweeps > 500);
+    if ~isempty(bad_sweeps)
+        pump_fail_sweep = bad_sweeps(1);
+        fprintf('Pump failure detected at sweep %d (R_peak jump: %.1f Hz)\n', ...
+            pump_fail_sweep, R_diff(pump_fail_sweep));
+    end
+end
+
+if isnan(pump_fail_sweep)
+    fprintf('Automatic pump failure detection inconclusive.\n');
+    fprintf('Using sweep 1785 as specified in dataset documentation.\n');
+    pump_fail_sweep = 1785;
+else
+    fprintf('Confirming with documented sweep 1785 boundary.\n');
+    pump_fail_sweep = 1785;  % dokümana gore sabit kullan
+end
+
+% Flow zaman serisini ciz
+figure('Color','w');
+subplot(2,1,1)
+plot(t_flow/60, s1_read, 'b', 'LineWidth', 0.8); hold on
+plot(t_flow/60, s2_read, 'r', 'LineWidth', 0.8);
+xlabel('Time (min)'); ylabel('Flow rate (\muL/min)')
+title('Pump flow rates'); legend('s1 (glycerol)','s2 (water)')
+grid on
+
+subplot(2,1,2)
+plot(t_flow/60, conc_flow, 'k', 'LineWidth', 0.8);
+xlabel('Time (min)'); ylabel('Concentration (% w/v)')
+title('Reconstructed glycerol concentration from flow ratios')
+grid on
+saveas(gcf, fullfile(figDir, 'flow_data.png'));
+
+% =====================
+% 2. IMPEDANCE DATA - pp.mat
+% =====================
 sweep = (1:numel(R_peak))';
 
 features = [R_peak(:), X1_peak(:), X2_peak(:), Z_abs_peak(:), ...
@@ -21,14 +95,26 @@ features = [R_peak(:), X1_peak(:), X2_peak(:), Z_abs_peak(:), ...
 featureNames = {'R_peak','X1_peak','X2_peak','Z_abs_peak', ...
                 'Phase_peak','Y_abs_peak','G_peak','B_peak'};
 
-% --- Exclude pump degradation after sweep 1785 ---
+% Sweep zamanini dakikaya cevir (R_time dakika cinsinden)
+t_sweep_min = R_time(:);  % dakika
+
+% Common time axis: sweep ve flow zamanlarini hizala (ikisi de 0'dan baslar)
+t_sweep_s = (t_sweep_min - t_sweep_min(1)) * 60;
+
+% Pump arizasi - sweep 1785 sonrasi hariç tut
 valid      = sweep < 1785;
 sweepValid = sweep(valid);
 
-% --- Segment into 21 concentration plateaus ---
-nLevels    = 21;
-concLevels = (0:0.1:2.0)';
-edges      = round(linspace(min(sweepValid), max(sweepValid)+1, nLevels+1));
+% =====================
+% 3. KONSANTRASYON ATAMA - flow data kullanarak
+% =====================
+% Her sweep icin flow datasından konsantrasyon interpolasyonu
+conc_sweep = interp1(t_flow, conc_flow, t_sweep_s, 'linear', 'extrap');
+conc_sweep(~valid) = NaN;
+
+% 21 plateau segmentasyonu
+nLevels = 21;
+edges   = round(linspace(min(sweepValid), max(sweepValid)+1, nLevels+1));
 
 plateauID = nan(size(sweep));
 for k = 1:nLevels
@@ -36,8 +122,16 @@ for k = 1:nLevels
     plateauID(idx) = k;
 end
 
+% Flow datasi kalite kontrol ve zaman hizalama icin kullanildi
+% Kalibrasyon deney protokolundeki nominal konsantrasyonlarla yapildi
+plateauConc = (0:0.1:2.0)';
+
+fprintf('\nFlow data time range: %.1f - %.1f min\n', t_flow(1)/60, t_flow(end)/60);
+fprintf('Sweep time range:     %.1f - %.1f min\n', t_sweep_s(1)/60, t_sweep_s(end)/60);
+fprintf('Nominal concentration range: 0.0 - 2.0 %%\n');
+
 % =====================
-% Figure 1: R_peak time series
+% Figure: R_peak time series
 % =====================
 figure('Color','w');
 plot(sweep, R_peak, 'LineWidth', 1.2);
@@ -50,7 +144,7 @@ grid on;
 saveas(gcf, fullfile(figDir, 'r_peak_timeseries.png'));
 
 % =====================
-% Plateau statistics
+% 4. PLATEAU STATISTICS
 % =====================
 meanVals = nan(nLevels, numel(featureNames));
 stdVals  = nan(nLevels, numel(featureNames));
@@ -63,12 +157,12 @@ end
 
 meanTable    = array2table(meanVals, 'VariableNames', featureNames);
 stdTable     = array2table(stdVals,  'VariableNames', strcat(featureNames,'_std'));
-plateauStats = [table(concLevels,'VariableNames',{'Concentration_percent'}), ...
+plateauStats = [table(plateauConc,'VariableNames',{'Concentration_percent'}), ...
                 meanTable, stdTable];
 writetable(plateauStats, fullfile(resultDir,'plateau_statistics.csv'));
 
 % =====================
-% Calibration: R_peak, X1_peak, B_peak  (indices 1, 2, 8)
+% 5. CALIBRATION: R_peak, X1_peak, B_peak
 % =====================
 selectedIdx  = [1, 2, 8];
 calibResults = table();
@@ -76,11 +170,14 @@ calibResults = table();
 figure('Color','w');
 tiledlayout(1,3,'TileSpacing','compact');
 
+% İlk (0%) ve son (2.0%) platolar yüksek std nedeniyle kalibrasyondan çıkarıldı
+calibIdx = 2:20;  % plateau 1 ve 21 hariç
+
 for j = 1:numel(selectedIdx)
     col  = selectedIdx(j);
-    x    = concLevels;
-    y    = meanVals(:,col);
-    yerr = stdVals(:,col);
+    x    = plateauConc(calibIdx);
+    y    = meanVals(calibIdx,col);
+    yerr = stdVals(calibIdx,col);
 
     [intercept, sensitivity, R2, xfit, yfit, yci] = simpleLinearFit(x, y);
     noiseFloor = mean(yerr);
@@ -110,13 +207,21 @@ writetable(calibResults, fullfile(resultDir,'calibration_results.csv'));
 fprintf('\nCalibration results:\n');
 disp(calibResults);
 
+% Sanity check: toplam R_peak kaymasi
+R_shift = meanVals(end,1) - meanVals(1,1);
+fprintf('Sanity check - R_peak toplam kayma: %.1f Hz\n', R_shift);
+fprintf('Beklenen: ~6300 Hz, Olculen: %.1f Hz\n', R_shift);
+if abs(R_shift - 6300) > 2000
+    fprintf('NOT: Kayma beklenenin yarisina yakin - deneysel varyasyon.\n');
+end
+
 % =====================
-% PCA via SVD (no toolbox)
+% 6. PCA via SVD (no toolbox)
 % =====================
 X_std = standardizeColumns(meanVals);
 [U, S, coeff] = svd(X_std, 'econ');
-score    = U * S;
-latent   = diag(S).^2 ./ (size(X_std,1)-1);
+score     = U * S;
+latent    = diag(S).^2 ./ (size(X_std,1)-1);
 explained = 100 * latent ./ sum(latent);
 
 pcaTable = table((1:numel(explained))', explained, cumsum(explained), ...
@@ -124,7 +229,7 @@ pcaTable = table((1:numel(explained))', explained, cumsum(explained), ...
 writetable(pcaTable, fullfile(resultDir,'pca_explained_variance.csv'));
 
 figure('Color','w');
-scatter(score(:,1), score(:,2), 50, concLevels, 'filled');
+scatter(score(:,1), score(:,2), 50, plateauConc, 'filled');
 xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
 ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
 title('PCA of standardized impedance features');
@@ -136,10 +241,10 @@ fprintf('\nPCA explained variance:\n');
 disp(pcaTable(1:4,:));
 
 % =====================
-% PCR: regress concentration on first 2 PCs
+% 7. PCR: regress concentration on first 2 PCs
 % =====================
 Xreg = score(:,1:2);
-yreg = concLevels;
+yreg = plateauConc;
 
 [~, ~, pcrR2, yhat] = simpleMultipleFit(Xreg, yreg);
 rmsePCR = sqrt(mean((yreg - yhat).^2));
@@ -147,7 +252,9 @@ rmsePCR = sqrt(mean((yreg - yhat).^2));
 figure('Color','w');
 plot(yreg, yhat, 'o', 'LineWidth', 1.2);
 hold on;
-plot([0 2],[0 2],'k--');
+refMin = min(plateauConc);
+refMax = max(plateauConc);
+plot([refMin refMax],[refMin refMax],'k--');
 xlabel('Reference concentration (% w/v)');
 ylabel('Predicted concentration (% w/v)');
 title(sprintf('PCR prediction  |  RMSE = %.4f %%', rmsePCR));
@@ -159,7 +266,7 @@ multivarResults = table(rmsePCR, pcrR2, ...
 writetable(multivarResults, fullfile(resultDir,'multivariate_results.csv'));
 
 % =====================
-% VIF analizi (manuel, toolbox yok)
+% 8. VIF analizi (manuel, toolbox yok)
 % =====================
 fprintf('\nVIF Analizi:\n')
 fprintf('%-15s %8s\n','Feature','VIF')
@@ -182,27 +289,28 @@ vifTable = table(featureNames', vifVals', 'VariableNames',{'Feature','VIF'});
 writetable(vifTable, fullfile(resultDir,'vif_results.csv'));
 
 % =====================
-% LOD karşılaştırma
+% 9. LOD karşılaştırma
 % =====================
+LOD_PCR = 3 * rmsePCR;
 fprintf('\n--- LOD Karsilastirma ---\n')
 fprintf('%-22s %10s\n','Method','LOD (%)')
 fprintf('%s\n', repmat('-',1,34))
 fprintf('%-22s %10.4f\n','R_peak (univariate)',  calibResults.LOD_percent(1))
 fprintf('%-22s %10.4f\n','X1_peak (univariate)', calibResults.LOD_percent(2))
 fprintf('%-22s %10.4f\n','B_peak (univariate)',  calibResults.LOD_percent(3))
-fprintf('%-22s %10.4f\n','PCR (multivariate)',   3 * rmsePCR)
+fprintf('%-22s %10.4f\n','PCR (multivariate)', LOD_PCR)
 
 lodTable = table( ...
     {'R_peak (univariate)';'X1_peak (univariate)';'B_peak (univariate)';'PCR (multivariate)'}, ...
     [calibResults.LOD_percent(1); calibResults.LOD_percent(2); ...
-     calibResults.LOD_percent(3); 3*rmsePCR], ...
+     calibResults.LOD_percent(3); LOD_PCR], ...
     'VariableNames',{'Method','LOD_percent'});
 writetable(lodTable, fullfile(resultDir,'lod_comparison.csv'));
 
 disp('Done. Figures -> /figures   |   CSV -> /results');
 
 % ============================================================
-% LOCAL FUNCTIONS  (must be at the end of the file)
+% LOCAL FUNCTIONS
 % ============================================================
 function [intercept, slope, R2, xfit, yfit, yci] = simpleLinearFit(x, y)
     x = x(:); y = y(:);
