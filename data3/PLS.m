@@ -137,34 +137,34 @@ fprintf('=========================================\n');
 % 9. GRAFİKLER
 % =========================
 figure('Name','Final Model','Position',[50 400 1100 380]);
-plot(ytest,'b-','LineWidth',1.5,'DisplayName','Gerçek'); hold on;
-plot(y_pred,'r--','LineWidth',1.5,'DisplayName','Tahmin');
+plot(ytest,'b-','LineWidth',1.5,'DisplayName','Actual'); hold on;
+plot(y_pred,'r--','LineWidth',1.5,'DisplayName','Predicted');
 legend; grid on;
 title(sprintf('Final RF (Test R²=%.4f, RMSE=%.4f)', R2fn(ytest,y_pred), RMSEfn(ytest,y_pred)));
-xlabel('Test Örneği'); ylabel('Konsantrasyon');
+xlabel('Test Sample'); ylabel('Concentration');
 
 figure('Name','Parity Plot','Position',[50 50 460 420]);
 mn=min([ytest;y_pred]); mx=max([ytest;y_pred]);
 scatter(ytest,y_pred,40,'filled','MarkerFaceAlpha',0.6); hold on;
 plot([mn mx],[mn mx],'r-','LineWidth',1.5);
-xlabel('Gerçek'); ylabel('Tahmin'); grid on; axis equal;
+xlabel('Actual'); ylabel('Predicted'); grid on; axis equal;
 title(sprintf('Parity Plot (R²=%.4f)', R2fn(ytest,y_pred)));
 
 figure('Name','Residual','Position',[560 50 680 380]);
 res=ytest-y_pred;
 subplot(1,2,1); plot(res,'Color',[0.2 0.5 0.8]); yline(0,'r--');
-title('Residuals'); xlabel('Örnek'); ylabel('Hata'); grid on;
+title('Residuals'); xlabel('Sample'); ylabel('Error'); grid on;
 subplot(1,2,2); histogram(res,25,'FaceColor',[0.2 0.5 0.8],'EdgeColor','w');
-title('Dağılım'); xlabel('Hata'); ylabel('Frekans'); grid on;
+title('Distribution'); xlabel('Error'); ylabel('Frequency'); grid on;
 
 figure('Name','Permutation Importance','Position',[50 50 800 380]);
 top_show = min(20, nFeat);
 barh(flip(perm_imp(perm_ord(1:top_show))),'FaceColor',[0.3 0.65 0.4]);
 yticks(1:top_show);
 yticklabels(flip(all_names(perm_ord(1:top_show))));
-title('Top-20 Özellik (Permutation Importance)'); xlabel('ΔR² (özellik kaldırıldığında kayıp)'); grid on;
+title('Top-20 Features (Permutation Importance)'); xlabel('ΔR² (loss when feature is removed)'); grid on;
 
-figure('Name','Top-N Tarama','Position',[50 50 500 340]);
+figure('Name','Top-N Scan','Position',[50 50 500 340]);
 plot(top_ns, r2_scan,'b-o','LineWidth',1.5,'MarkerSize',7);
-xline(best_N,'r--',sprintf('En iyi: %d',best_N));
-xlabel('Top-N Özellik Sayısı'); ylabel('Test R²'); title('Özellik Sayısı Tarama'); grid on;
+xline(best_N,'r--',sprintf('Best: %d',best_N));
+xlabel('Number of Top-N Features'); ylabel('Test R²'); title('Feature Count Scan'); grid on;
